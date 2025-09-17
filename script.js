@@ -532,6 +532,34 @@ class VocabularyQuiz {
     bindEvents() {
         this.optionsEl.forEach((option, index) => {
             option.addEventListener('click', () => this.selectOption(index));
+            
+            // Add touch and mouse leave events to prevent sticky hover
+            option.addEventListener('mouseleave', () => {
+                if (!option.classList.contains('selected') && 
+                    !option.classList.contains('correct') && 
+                    !option.classList.contains('wrong') &&
+                    !option.classList.contains('disabled')) {
+                    option.style.removeProperty('transform');
+                    option.style.removeProperty('box-shadow');
+                }
+            });
+            
+            option.addEventListener('touchend', () => {
+                // Remove focus after touch to prevent sticky states
+                setTimeout(() => {
+                    option.blur();
+                    // Force reset of any remaining hover styles
+                    if (this.isTouchDevice()) {
+                        option.style.backgroundColor = '';
+                        option.style.transform = '';
+                        option.style.boxShadow = '';
+                    }
+                }, 100);
+            });
+            
+            option.addEventListener('touchcancel', () => {
+                option.blur();
+            });
         });
         
         this.prevBtn.addEventListener('click', () => this.previousQuestion());
@@ -544,12 +572,56 @@ class VocabularyQuiz {
         this.reviewBtn.addEventListener('click', () => this.showReviewMode());
     }
     
+    
+    resetOptionStates() {
+        // Force remove all hover states and reset visual states
+        this.optionsEl.forEach((option, index) => {
+            // Remove all classes
+            option.className = 'option';
+            
+            // Reset inline styles that might persist
+            option.style.removeProperty('transform');
+            option.style.removeProperty('box-shadow');
+            option.style.removeProperty('border-color');
+            option.style.removeProperty('background');
+            option.style.removeProperty('color');
+            
+            // Remove focus and blur to prevent sticky hover states
+            if (option === document.activeElement) {
+                option.blur();
+            }
+            
+            // Force reflow to ensure styles are applied
+            const height = option.offsetHeight;
+            // Use height to prevent unused variable warning
+            if (height) {
+                // Reflow completed
+            }
+            
+            // Re-enable if disabled
+            option.disabled = false;
+            option.style.pointerEvents = '';
+            option.style.opacity = '';
+            option.style.cursor = 'pointer';
+        });
+        
+        // Small delay to ensure DOM updates are processed
+        setTimeout(() => {
+            this.optionsEl.forEach(option => {
+                option.style.transition = 'all 0.3s ease';
+            });
+        }, 10);
+    }
+    
     loadQuestion() {
         // Clear any running countdown when loading a new question
         this.clearCountdown();
         
         // Stop any ongoing speech
         this.stopSpeech();
+        
+        // Reset all option states completely
+        this.resetOptionStates();
         
         let question;
         let questionIndex;
@@ -574,6 +646,9 @@ class VocabularyQuiz {
             option.textContent = question.options[index];
             option.className = 'option';
             option.disabled = false;
+            option.style.transform = '';
+            option.style.boxShadow = '';
+            option.blur(); // Remove focus
         });
         
         // Show previous answer if exists
@@ -588,9 +663,16 @@ class VocabularyQuiz {
     }
     
     selectOption(index) {
-        // Remove previous selection
-        this.optionsEl.forEach(option => {
+        // Clear any countdown first
+        this.clearCountdown();
+        
+        // Remove previous selection states completely
+        this.optionsEl.forEach((option, i) => {
             option.classList.remove('selected');
+            // Force remove hover states
+            option.style.removeProperty('transform');
+            option.style.removeProperty('box-shadow');
+            option.blur(); // Remove focus to prevent sticky hover
         });
         
         // Add selection to clicked option

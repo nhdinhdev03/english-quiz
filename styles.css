@@ -182,6 +182,23 @@ header p {
         background: linear-gradient(135deg, #1e40af, #1e3a8a);
         transform: scale(0.98);
     }
+    
+    /* Disable hover effects on touch devices */
+    .option:hover:not(.disabled):not(.selected) {
+        border-color: #e5e7eb;
+        background: #f9fafb;
+        transform: none;
+        box-shadow: none;
+    }
+    
+    .option:active:not(.disabled) {
+        transform: scale(0.98);
+        transition: transform 0.1s ease;
+    }
+    
+    .option.selected:active {
+        transform: scale(0.98);
+    }
 }
 
 .options {
@@ -200,13 +217,21 @@ header p {
     text-align: left;
     transition: all 0.3s ease;
     color: #374151;
+    position: relative;
+    outline: none;
+    -webkit-tap-highlight-color: transparent;
 }
 
-.option:hover {
+.option:hover:not(.disabled):not(.selected) {
     border-color: #6366f1;
     background: #f0f9ff;
     transform: translateY(-2px);
     box-shadow: 0 8px 25px rgba(99, 102, 241, 0.15);
+}
+
+.option:focus {
+    outline: 2px solid #6366f1;
+    outline-offset: 2px;
 }
 
 .option.selected {
@@ -214,23 +239,60 @@ header p {
     background: #eef2ff;
     color: #4f46e5;
     font-weight: 600;
+    transform: none;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);
+}
+
+.option.selected:hover {
+    border-color: #4f46e5;
+    background: #eef2ff;
+    transform: none;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.2);
 }
 
 .option.correct {
     border-color: #10b981;
     background: #ecfdf5;
     color: #059669;
+    transform: none;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
+}
+
+.option.correct:hover {
+    border-color: #10b981;
+    background: #ecfdf5;
+    transform: none;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.2);
 }
 
 .option.wrong {
     border-color: #ef4444;
     background: #fef2f2;
     color: #dc2626;
+    transform: none;
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
+}
+
+.option.wrong:hover {
+    border-color: #ef4444;
+    background: #fef2f2;
+    transform: none;
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
 }
 
 .option.disabled {
     pointer-events: none;
     opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.option.disabled:hover {
+    border-color: #e5e7eb;
+    background: #f9fafb;
+    transform: none;
+    box-shadow: none;
 }
 
 .controls {
@@ -707,6 +769,55 @@ header p {
     
     .speech-error {
         animation: none;
+    }
+    
+    .option {
+        transition: none;
+    }
+}
+
+/* Focus management for better UX */
+.option:focus-visible {
+    outline: 2px solid #6366f1;
+    outline-offset: 2px;
+}
+
+.option:focus:not(:focus-visible) {
+    outline: none;
+}
+
+/* Prevent text selection on touch devices */
+.option {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+
+/* Better touch response */
+@media (pointer: coarse) {
+    .option {
+        min-height: 48px;
+        display: flex;
+        align-items: center;
+    }
+    
+    /* Disable hover effects on touch devices */
+    .option:hover {
+        background-color: #f8f9fa !important;
+        transform: none !important;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1) !important;
+    }
+    
+    .option.selected:hover,
+    .option.correct:hover,
+    .option.incorrect:hover {
+        transform: none !important;
+    }
+    
+    .btn:hover {
+        transform: none !important;
     }
 }
 
