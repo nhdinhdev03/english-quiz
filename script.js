@@ -269,32 +269,51 @@ class VocabularyQuiz {
             question = this.shuffledQuizData[this.currentQuestion];
         }
         
-        // First priority: Extract English vocabulary from question text
-        const englishWords = this.extractEnglishVocabulary(question.question);
-        if (englishWords.length > 0) {
-            // Filter out question words and keep only meaningful vocabulary
-            const vocabularyWords = englishWords.filter(word => {
-                const lower = word.toLowerCase();
-                return !['what', 'does', 'mean', 'choose', 'correct', 'answer'].includes(lower);
-            });
-            if (vocabularyWords.length > 0) {
-                return vocabularyWords.join(', ');
+        // Try different strategies to find English vocabulary
+        return this.findQuotedEnglish(question.question) ||
+               this.findVocabularyInText(question.question) ||
+               this.findEnglishInOptions(question.options, question.correct);
+    }
+    
+    findQuotedEnglish(questionText) {
+        const quotedWords = questionText.match(/'([^']+)'/g);
+        if (quotedWords) {
+            for (let quoted of quotedWords) {
+                const word = quoted.replace(/'/g, '').trim();
+                if (this.isEnglishText(word) && word.length > 2) {
+                    return word;
+                }
             }
         }
-        
-        // Second priority: Look for English words in options (usually the correct answer)
-        const correctOption = question.options[question.correct];
-        if (this.isEnglishText(correctOption)) {
+        return null;
+    }
+    
+    findVocabularyInText(questionText) {
+        const englishWords = this.extractEnglishVocabulary(questionText);
+        if (englishWords.length > 0) {
+            const vocabularyWords = englishWords.filter(word => {
+                const lower = word.toLowerCase();
+                const questionWords = ['what', 'does', 'mean', 'choose', 'correct', 'answer', 'which', 'word', 'phrase', 'refers'];
+                return !questionWords.includes(lower) && this.isEnglishText(word);
+            });
+            return vocabularyWords.length > 0 ? vocabularyWords[0] : null;
+        }
+        return null;
+    }
+    
+    findEnglishInOptions(options, correctIndex) {
+        // Check correct answer first
+        const correctOption = options[correctIndex];
+        if (this.isEnglishText(correctOption) && correctOption.trim().length > 2) {
             return correctOption.trim();
         }
         
-        // Last resort: Find any English option
-        for (let option of question.options) {
-            if (this.isEnglishText(option)) {
+        // Check other options
+        for (let option of options) {
+            if (this.isEnglishText(option) && option.trim().length > 2) {
                 return option.trim();
             }
         }
-        
         return null;
     }
     
@@ -639,6 +658,30 @@ class VocabularyQuiz {
     
     isEnglishText(text) {
         if (!text || text.trim().length < 2) return false;
+        
+        // List of Vietnamese words/phrases to explicitly reject
+        const vietnameseWords = [
+            'những', 'món', 'ngon', 'trải', 'nghiệm', 'khác', 'biệt', 'văn', 'hóa',
+            'công', 'việc', 'dạy', 'học', 'bán', 'hàng', 'du', 'lịch', 'nấu', 'ăn',
+            'thành', 'phố', 'lớn', 'ngôi', 'làng', 'nhỏ', 'quốc', 'gia', 'châu', 'lục',
+            'trong', 'nước', 'hải', 'ngoại', 'nước', 'ngoài', 'dưới', 'biển', 'trên', 'núi',
+            'rất', 'vừa', 'phải', 'xíu', 'dài', 'chủ', 'nhà', 'khách', 'hàng', 'xóm',
+            'bạn', 'bè', 'tay', 'chân', 'đầu', 'bụng', 'dạ', 'dày', 'bình', 'thường',
+            'bất', 'thường', 'thường', 'xuyên', 'hiếm', 'khi', 'thích', 'thú', 'vui',
+            'sướng', 'làm', 'vui', 'vẻ', 'hạnh', 'phúc', 'chán', 'nản', 'tức', 'giận',
+            'tự', 'tin', 'lúng', 'túng', 'bối', 'rối', 'sức', 'thuyết', 'phục', 'không',
+            'khó', 'hiểu', 'dễ', 'hiểu', 'nhai', 'nuốt', 'nôn', 'cắn', 'ghê', 'tởm',
+            'kinh', 'tởm', 'miêu', 'tả', 'mô', 'tả', 'ngôn', 'ngữ', 'hình', 'thể',
+            'viết', 'nói', 'máy'
+        ];
+        
+        // Check if text contains Vietnamese words
+        const lowerText = text.toLowerCase();
+        for (let vietnameseWord of vietnameseWords) {
+            if (lowerText.includes(vietnameseWord)) {
+                return false;
+            }
+        }
         
         // Remove common Vietnamese characters and check if only English remains
         const withoutVietnamese = text.replace(/[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]/g, '');
