@@ -132,6 +132,8 @@ class VocabularyQuiz {
         this.retryQuestions = [];
         this.currentRetryIndex = 0;
         this.countdownTimer = null;
+        this.startTime = null;
+        this.endTime = null;
         
         // Shuffle questions randomly
         this.shuffledQuizData = this.shuffleArray([...quizData]);
@@ -140,8 +142,75 @@ class VocabularyQuiz {
         this.initializeElements();
         this.bindEvents();
         this.loadQuestion();
+        this.startTime = new Date();
     }
     
+    
+    
+    speakText() {
+        if ('speechSynthesis' in window) {
+            // Cancel any ongoing speech
+            speechSynthesis.cancel();
+            
+            let textToSpeak = '';
+            let question;
+            
+            if (this.isRetryMode) {
+                question = this.retryQuestions[this.currentRetryIndex];
+            } else {
+                question = this.shuffledQuizData[this.currentQuestion];
+            }
+            
+            // Extract English words from question
+            const englishWords = this.extractEnglishWords(question.question);
+            if (englishWords.length > 0) {
+                textToSpeak = englishWords.join(', ');
+            } else {
+                // If no English words found, try to speak options
+                textToSpeak = question.options.filter(option => 
+                    /^[a-zA-Z\s]+$/.test(option)
+                ).join(', ');
+            }
+            
+            if (textToSpeak) {
+                const utterance = new SpeechSynthesisUtterance(textToSpeak);
+                utterance.lang = 'en-US';
+                utterance.rate = 0.8;
+                utterance.pitch = 1;
+                
+                // Change button appearance during speech
+                this.speakBtn.textContent = '🔄 Speaking...';
+                this.speakBtn.disabled = true;
+                
+                utterance.onend = () => {
+                    this.speakBtn.textContent = '🔊 Listen';
+                    this.speakBtn.disabled = false;
+                };
+                
+                utterance.onerror = () => {
+                    this.speakBtn.textContent = '🔊 Listen';
+                    this.speakBtn.disabled = false;
+                    console.error('Speech synthesis error');
+                };
+                
+                speechSynthesis.speak(utterance);
+            } else {
+                alert('No English text found to pronounce in this question.');
+            }
+        } else {
+            alert('Text-to-speech is not supported in your browser.');
+        }
+    }
+    
+    extractEnglishWords(text) {
+        // Extract English words from mixed text
+        const englishPattern = /\b[a-zA-Z]+(?:\s+[a-zA-Z]+)*\b/g;
+        const matches = text.match(englishPattern) || [];
+        return matches.filter(word => 
+            word.length > 1 && 
+            !/^(what|does|mean|choose|correct|the|is|are|in|on|at|to|for|of|a|an|and|or)$/i.test(word.trim())
+        );
+    }
     
     shuffleArray(array) {
         const shuffled = [...array];
@@ -162,11 +231,14 @@ class VocabularyQuiz {
         this.nextBtn = document.getElementById('nextBtn');
         this.submitBtn = document.getElementById('submitBtn');
         this.resetBtn = document.getElementById('resetBtn');
+        this.speakBtn = document.getElementById('speakBtn');
         this.feedbackEl = document.getElementById('feedback');
         this.resultsEl = document.getElementById('results');
         this.quizContainer = document.querySelector('.quiz-container');
         this.restartBtn = document.getElementById('restartBtn');
         this.retryIndicator = document.getElementById('retryIndicator');
+        this.retryWrongBtn = document.getElementById('retryWrongBtn');
+        this.reviewBtn = document.getElementById('reviewBtn');
         
         this.totalQuestionsEl.textContent = this.totalQuestions;
     }
@@ -180,7 +252,10 @@ class VocabularyQuiz {
         this.nextBtn.addEventListener('click', () => this.nextQuestion());
         this.submitBtn.addEventListener('click', () => this.submitQuiz());
         this.resetBtn.addEventListener('click', () => this.resetQuiz());
+        this.speakBtn.addEventListener('click', () => this.speakText());
         this.restartBtn.addEventListener('click', () => this.restartQuiz());
+        this.retryWrongBtn.addEventListener('click', () => this.startRetryWrongOnly());
+        this.reviewBtn.addEventListener('click', () => this.showReviewMode());
     }
     
     loadQuestion() {
@@ -518,6 +593,7 @@ class VocabularyQuiz {
     }
     
     showResults() {
+        this.endTime = new Date();
         this.quizContainer.style.display = 'none';
         this.resultsEl.style.display = 'block';
         
@@ -527,7 +603,53 @@ class VocabularyQuiz {
         document.getElementById('correctAnswers').textContent = this.score;
         document.getElementById('totalScore').textContent = this.totalQuestions;
         
+        // Update statistics
+        this.updateStatistics();
+        
+        // Show wrong answers section if there are any
+        this.showWrongAnswersSection();
+        
         this.showDetailedResults();
+    }
+    
+    updateStatistics() {
+        const timeDiff = this.endTime - this.startTime;
+        const minutes = Math.floor(timeDiff / 60000);
+        const seconds = Math.floor((timeDiff % 60000) / 1000);
+        const timeString = `${minutes}:${seconds.toString().padStart(2, '0')}`;
+        
+        const wrongCount = this.totalQuestions - this.score;
+        const accuracy = Math.round((this.score / this.totalQuestions) * 100);
+        
+        document.getElementById('correctCount').textContent = this.score;
+        document.getElementById('wrongCount').textContent = wrongCount;
+        document.getElementById('accuracyRate').textContent = `${accuracy}%`;
+        document.getElementById('timeSpent').textContent = timeString;
+    }
+    
+    showWrongAnswersSection() {
+        const wrongAnswersSection = document.getElementById('wrongAnswersSection');
+        const wrongAnswersList = document.getElementById('wrongAnswersList');
+        
+        if (this.wrongAnswers.length > 0) {
+            wrongAnswersSection.style.display = 'block';
+            wrongAnswersList.innerHTML = '';
+            
+            this.wrongAnswers.forEach((wrongAnswer, index) => {
+                const wrongItem = document.createElement('div');
+                wrongItem.className = 'wrong-question-item';
+                wrongItem.innerHTML = `
+                    <h4>Question ${wrongAnswer.questionIndex + 1}: ${wrongAnswer.question.question}</h4>
+                    <div class="answer-info">
+                        <span style="color: #dc2626;">Your answer: ${wrongAnswer.question.options[wrongAnswer.userAnswer]}</span><br>
+                        <span style="color: #059669;">Correct answer: ${wrongAnswer.question.options[wrongAnswer.correctAnswer]}</span>
+                    </div>
+                `;
+                wrongAnswersList.appendChild(wrongItem);
+            });
+        } else {
+            wrongAnswersSection.style.display = 'none';
+        }
     }
     
     showDetailedResults() {
@@ -553,6 +675,97 @@ class VocabularyQuiz {
     }
     
     
+    
+    startRetryWrongOnly() {
+        if (this.wrongAnswers.length === 0) {
+            alert('No wrong answers to retry!');
+            return;
+        }
+        
+        this.isRetryMode = true;
+        this.retryQuestions = this.wrongAnswers.map(wrong => wrong.question);
+        this.currentRetryIndex = 0;
+        this.answers = []; // Reset answers for retry
+        
+        // Show retry indicator
+        this.retryIndicator.style.display = 'block';
+        this.retryIndicator.innerHTML = '🔄 Retry Mode: Practicing incorrect answers only';
+        
+        // Update total questions display for retry mode
+        this.totalQuestionsEl.textContent = this.retryQuestions.length;
+        
+        this.resultsEl.style.display = 'none';
+        this.quizContainer.style.display = 'block';
+        
+        this.loadQuestion();
+    }
+    
+    showReviewMode() {
+        // Create a review modal or show all questions in sequence
+        const reviewModal = document.createElement('div');
+        reviewModal.className = 'review-modal';
+        reviewModal.innerHTML = `
+            <div class="review-content">
+                <h2>📖 Review All Questions</h2>
+                <div class="review-questions" id="reviewQuestions"></div>
+                <button class="close-review" onclick="this.parentElement.parentElement.remove()">Close Review</button>
+            </div>
+        `;
+        
+        const reviewQuestions = reviewModal.querySelector('#reviewQuestions');
+        
+        this.shuffledQuizData.forEach((question, index) => {
+            const userAnswer = this.answers[index];
+            const isCorrect = userAnswer === question.correct;
+            
+            const questionDiv = document.createElement('div');
+            questionDiv.className = `review-question ${isCorrect ? 'correct' : 'wrong'}`;
+            questionDiv.innerHTML = `
+                <h3>Question ${index + 1}: ${question.question}</h3>
+                <div class="review-options">
+                    ${question.options.map((option, optIndex) => {
+                        let className = 'review-option';
+                        if (optIndex === question.correct) className += ' correct-answer';
+                        if (optIndex === userAnswer && !isCorrect) className += ' user-wrong';
+                        if (optIndex === userAnswer && isCorrect) className += ' user-correct';
+                        
+                        return `<div class="${className}">${option}</div>`;
+                    }).join('')}
+                </div>
+                <button class="speak-review" onclick="window.vocabularyQuiz.speakQuestionText('${question.question}', ${JSON.stringify(question.options).replace(/"/g, '&quot;')})">
+                    🔊 Listen
+                </button>
+            `;
+            reviewQuestions.appendChild(questionDiv);
+        });
+        
+        document.body.appendChild(reviewModal);
+    }
+    
+    speakQuestionText(questionText, options) {
+        if ('speechSynthesis' in window) {
+            speechSynthesis.cancel();
+            
+            const englishWords = this.extractEnglishWords(questionText);
+            let textToSpeak = '';
+            
+            if (englishWords.length > 0) {
+                textToSpeak = englishWords.join(', ');
+            } else {
+                textToSpeak = options.filter(option => 
+                    /^[a-zA-Z\s]+$/.test(option)
+                ).join(', ');
+            }
+            
+            if (textToSpeak) {
+                const utterance = new SpeechSynthesisUtterance(textToSpeak);
+                utterance.lang = 'en-US';
+                utterance.rate = 0.8;
+                speechSynthesis.speak(utterance);
+            }
+        }
+    }
+    
     resetQuiz() {
         if (confirm('Are you sure you want to reset the quiz? All progress will be lost.')) {
             this.restartQuiz();
@@ -567,6 +780,8 @@ class VocabularyQuiz {
         this.isRetryMode = false;
         this.retryQuestions = [];
         this.currentRetryIndex = 0;
+        this.startTime = new Date();
+        this.endTime = null;
         
         // Hide retry indicator
         this.retryIndicator.style.display = 'none';

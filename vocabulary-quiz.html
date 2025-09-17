@@ -28,6 +28,9 @@
             
             <div class="question-box">
                 <h2 id="question">Loading question...</h2>
+                <button id="speakBtn" class="speak-btn" title="Listen to pronunciation">
+                    🔊 Listen
+                </button>
                 <div class="options">
                     <button class="option" id="option1">Option 1</button>
                     <button class="option" id="option2">Option 2</button>
@@ -54,8 +57,46 @@
                 </div>
                 <p>You scored <span id="correctAnswers">0</span> out of <span id="totalScore">20</span></p>
             </div>
+            
+            <!-- Statistics Section -->
+            <div class="statistics" id="statistics">
+                <h3>📊 Detailed Statistics</h3>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-number" id="correctCount">0</span>
+                        <span class="stat-label">Correct</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number" id="wrongCount">0</span>
+                        <span class="stat-label">Incorrect</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number" id="accuracyRate">0%</span>
+                        <span class="stat-label">Accuracy</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number" id="timeSpent">0:00</span>
+                        <span class="stat-label">Time</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Wrong Answers Section -->
+            <div class="wrong-answers-section" id="wrongAnswersSection" style="display: none;">
+                <h3>❌ Questions You Got Wrong</h3>
+                <p class="retry-suggestion">📝 You should review these questions:</p>
+                <div class="wrong-answers-list" id="wrongAnswersList"></div>
+                <button id="retryWrongBtn" class="control-btn retry-wrong-btn">
+                    🔄 Practice Wrong Answers Only
+                </button>
+            </div>
+            
             <div class="result-details" id="resultDetails"></div>
-            <button id="restartBtn" class="control-btn">Restart Quiz</button>
+            
+            <div class="action-buttons">
+                <button id="restartBtn" class="control-btn">🔄 Restart Quiz</button>
+                <button id="reviewBtn" class="control-btn review-btn">📖 Review All Questions</button>
+            </div>
         </div>
     </div>
     
