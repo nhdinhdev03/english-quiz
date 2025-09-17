@@ -141,6 +141,7 @@ class VocabularyQuiz {
         this.voicesLoaded = false;
         this.speechQueue = [];
         this.isSpeaking = false;
+        this.hasUserInteracted = false;
         
         // Device detection
         this.isMobile = this.detectMobile();
@@ -156,6 +157,9 @@ class VocabularyQuiz {
         this.bindEvents();
         this.loadQuestion();
         this.startTime = new Date();
+        
+        // Track user interaction for speech permissions
+        this.trackUserInteraction();
     }
     
     
@@ -215,6 +219,83 @@ class VocabularyQuiz {
         }
         
         this.performSpeechWithCallback(textToSpeak, callback);
+    }
+    
+    speakEnglishVocabulary() {
+        if (!this.speechSynthesis) {
+            console.log('Text-to-speech is not supported in your browser.');
+            return;
+        }
+        
+        // Check user interaction on mobile
+        if (this.isMobile && !this.hasUserInteracted) {
+            console.log('Waiting for user interaction before speech on mobile');
+            return;
+        }
+        
+        // Prevent multiple speech instances
+        if (this.isSpeaking) {
+            return;
+        }
+        
+        // Wait for voices to load
+        if (!this.voicesLoaded) {
+            setTimeout(() => this.speakEnglishVocabulary(), 200);
+            return;
+        }
+        
+        let textToSpeak = this.getEnglishVocabularyOnly();
+        
+        if (!textToSpeak) {
+            console.log('No English vocabulary found to pronounce in this question.');
+            return;
+        }
+        
+        // Add small delay for mobile stability
+        if (this.isMobile) {
+            setTimeout(() => {
+                this.performSpeech(textToSpeak);
+            }, 300);
+        } else {
+            this.performSpeech(textToSpeak);
+        }
+    }
+    
+    getEnglishVocabularyOnly() {
+        let question;
+        if (this.isRetryMode) {
+            question = this.retryQuestions[this.currentRetryIndex];
+        } else {
+            question = this.shuffledQuizData[this.currentQuestion];
+        }
+        
+        // First priority: Extract English vocabulary from question text
+        const englishWords = this.extractEnglishVocabulary(question.question);
+        if (englishWords.length > 0) {
+            // Filter out question words and keep only meaningful vocabulary
+            const vocabularyWords = englishWords.filter(word => {
+                const lower = word.toLowerCase();
+                return !['what', 'does', 'mean', 'choose', 'correct', 'answer'].includes(lower);
+            });
+            if (vocabularyWords.length > 0) {
+                return vocabularyWords.join(', ');
+            }
+        }
+        
+        // Second priority: Look for English words in options (usually the correct answer)
+        const correctOption = question.options[question.correct];
+        if (this.isEnglishText(correctOption)) {
+            return correctOption.trim();
+        }
+        
+        // Last resort: Find any English option
+        for (let option of question.options) {
+            if (this.isEnglishText(option)) {
+                return option.trim();
+            }
+        }
+        
+        return null;
     }
     
     getTextToSpeak() {
@@ -319,7 +400,14 @@ class VocabularyQuiz {
         utterance.onerror = (event) => {
             this.isSpeaking = false;
             this.updateSpeechUI(false);
-            console.error('Speech error:', event.error);
+            console.log('Speech error:', event.error);
+            
+            // Handle specific mobile errors silently
+            if (event.error === 'not-allowed' || event.error === 'interrupted') {
+                console.log('Mobile speech permission issue - handled silently');
+                return;
+            }
+            
             this.handleSpeechError(event.error);
         };
         
@@ -351,7 +439,17 @@ class VocabularyQuiz {
         utterance.onerror = (event) => {
             this.isSpeaking = false;
             this.updateSpeechUI(false);
-            console.error('Speech error:', event.error);
+            console.log('Speech error with callback:', event.error);
+            
+            // Handle specific mobile errors silently but still execute callback
+            if (event.error === 'not-allowed' || event.error === 'interrupted') {
+                console.log('Mobile speech permission issue - executing callback anyway');
+                if (callback) {
+                    setTimeout(callback, 100);
+                }
+                return;
+            }
+            
             this.handleSpeechError(event.error);
             // Execute callback even on error to prevent UI freeze
             if (callback) {
@@ -369,9 +467,15 @@ class VocabularyQuiz {
     }
     
     speakWithRetry(utterance, retryCount = 0) {
-        const maxRetries = 3;
+        const maxRetries = 2;
         
         try {
+            // For mobile devices, ensure user interaction has occurred
+            if (this.isMobile && !this.hasUserInteracted) {
+                console.log('Speech requires user interaction on mobile');
+                return;
+            }
+            
             this.speechSynthesis.speak(utterance);
             
             // Timeout mechanism for mobile devices
@@ -385,15 +489,18 @@ class VocabularyQuiz {
                         this.speechSynthesis.cancel();
                         setTimeout(() => {
                             this.speakWithRetry(utterance, retryCount + 1);
-                        }, 100);
+                        }, 200);
                     } else {
-                        this.handleSpeechError('timeout');
+                        console.log('Speech timeout after retries');
+                        this.isSpeaking = false;
+                        this.updateSpeechUI(false);
                     }
-                }, 500);
+                }, 800);
             }
         } catch (error) {
             console.error('Speech error:', error);
-            this.handleSpeechError(error.message);
+            this.isSpeaking = false;
+            this.updateSpeechUI(false);
         }
     }
     
@@ -433,11 +540,37 @@ class VocabularyQuiz {
             case 'interrupted':
                 message = 'Speech was interrupted.';
                 break;
+            case 'not-allowed':
+                message = 'Speech permission denied. Please enable microphone access.';
+                break;
             default:
+                // Don't show error for common mobile issues
+                if (this.isMobile && (error.includes('not-allowed') || error.includes('interrupted'))) {
+                    console.log('Mobile speech issue:', error);
+                    return;
+                }
                 message = `Speech error: ${error}`;
         }
         
-        this.showSpeechError(message);
+        console.log('Speech error handled:', message);
+        // Only show critical errors to user
+        if (!this.isMobile || error === 'network') {
+            this.showSpeechError(message);
+        }
+    }
+    
+    trackUserInteraction() {
+        const events = ['click', 'touchstart', 'keydown'];
+        const enableSpeech = () => {
+            this.hasUserInteracted = true;
+            events.forEach(event => {
+                document.removeEventListener(event, enableSpeech);
+            });
+        };
+        
+        events.forEach(event => {
+            document.addEventListener(event, enableSpeech, { once: true });
+        });
     }
     
     showSpeechError(message) {
@@ -507,6 +640,14 @@ class VocabularyQuiz {
     isEnglishText(text) {
         if (!text || text.trim().length < 2) return false;
         
+        // Remove common Vietnamese characters and check if only English remains
+        const withoutVietnamese = text.replace(/[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđĐ]/g, '');
+        
+        // If Vietnamese characters were removed, it's not pure English
+        if (withoutVietnamese.length !== text.length) {
+            return false;
+        }
+        
         // Check if text contains only English characters (letters, spaces, hyphens, apostrophes)
         const englishOnly = /^[a-zA-Z\s\-']+$/.test(text.trim());
         
@@ -514,7 +655,10 @@ class VocabularyQuiz {
         const commonWords = ['a', 'an', 'the', 'is', 'are', 'was', 'were', 'to', 'of', 'in', 'on', 'at'];
         const isNotCommon = !commonWords.includes(text.trim().toLowerCase());
         
-        return englishOnly && isNotCommon && text.trim().length >= 2;
+        // Additional check: should not contain multiple consecutive uppercase letters (likely abbreviations)
+        const notAbbreviation = !/[A-Z]{3,}/.test(text);
+        
+        return englishOnly && isNotCommon && text.trim().length >= 2 && notAbbreviation;
     }
     
     
@@ -787,6 +931,11 @@ class VocabularyQuiz {
         this.updateProgress();
         this.updateButtons();
         this.hideFeedback();
+        
+        // Auto-speak English vocabulary when loading new question
+        setTimeout(() => {
+            this.speakEnglishVocabulary();
+        }, 500); // Small delay to let UI settle
     }
     
     selectOption(index) {
@@ -830,29 +979,17 @@ class VocabularyQuiz {
             this.feedbackEl.innerHTML = `
                 Correct! Well done!
                 <div class="auto-advance-indicator">
-                    <div class="countdown-circle">...</div>
-                    Reading vocabulary...
+                    <div class="countdown-circle">1.5</div>
+                    Next question coming up...
                 </div>
             `;
             this.optionsEl[selectedIndex].classList.add('correct');
             
-            // Auto-speak the vocabulary when answer is correct and wait for completion
-            setTimeout(() => {
-                this.speakTextWithCallback(() => {
-                    // Update indicator after speech is done
-                    const indicator = this.feedbackEl.querySelector('.auto-advance-indicator');
-                    if (indicator) {
-                        indicator.innerHTML = `
-                            <div class="countdown-circle">1.0</div>
-                            Next question coming up...
-                        `;
-                    }
-                    // Start countdown after speech is complete
-                    this.startCountdown(() => {
-                        this.autoAdvanceToNext();
-                    }, 1.0); // Shorter countdown after speech
-                });
-            }, 500); // Small delay to let user see the correct feedback first
+            // No auto-speak here since we already spoke when question loaded
+            // Just start countdown directly
+            this.startCountdown(() => {
+                this.autoAdvanceToNext();
+            }, 1.5);
             
         } else {
             this.feedbackEl.classList.add('wrong');
