@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>English Vocabulary Quiz</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>English Vocabulary Quiz</h1>
+            <p>Test your knowledge of English vocabulary TN2-U1-Lesson 4</p>
+        </header>
+        
+        <div class="quiz-container">
+            <div id="retryIndicator" class="retry-mode" style="display: none;">
+                🔄 Retry Mode: Practice your incorrect answers
+            </div>
+            
+            <div class="progress-bar">
+                <div class="progress" id="progress"></div>
+            </div>
+            
+            <div class="question-counter">
+                <span id="questionNumber">1</span> / <span id="totalQuestions">20</span>
+            </div>
+            
+            <div class="question-box">
+                <h2 id="question">Loading question...</h2>
+                <div class="options">
+                    <button class="option" id="option1">Option 1</button>
+                    <button class="option" id="option2">Option 2</button>
+                    <button class="option" id="option3">Option 3</button>
+                    <button class="option" id="option4">Option 4</button>
+                </div>
+            </div>
+            
+            <div class="controls">
+                <button id="prevBtn" class="control-btn" disabled>Previous</button>
+                <button id="resetBtn" class="control-btn reset-btn">🔄 Reset Quiz</button>
+                <button id="nextBtn" class="control-btn">Next</button>
+                <button id="submitBtn" class="control-btn submit-btn" style="display: none;">Submit Quiz</button>
+            </div>
+            
+            <div class="feedback" id="feedback"></div>
+        </div>
+        
+        <div class="results" id="results" style="display: none;">
+            <h2>Quiz Results</h2>
+            <div class="score-display">
+                <div class="score-circle">
+                    <span id="scorePercentage">0%</span>
+                </div>
+                <p>You scored <span id="correctAnswers">0</span> out of <span id="totalScore">20</span></p>
+            </div>
+            <div class="result-details" id="resultDetails"></div>
+            <button id="restartBtn" class="control-btn">Restart Quiz</button>
+        </div>
+    </div>
+    
+    <script src="script.js"></script>
+</body>
+</html>
