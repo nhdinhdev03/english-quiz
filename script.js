@@ -225,18 +225,24 @@ class VocabularyQuiz {
             question = this.shuffledQuizData[this.currentQuestion];
         }
         
-        // Extract English words from question
-        const englishWords = this.extractEnglishWords(question.question);
+        // Extract English vocabulary words from question first (highest priority)
+        const englishWords = this.extractEnglishVocabulary(question.question);
         if (englishWords.length > 0) {
             return englishWords.join(', ');
         }
         
-        // Fallback to English options
+        // Fallback: Look for English words in the correct answer option
+        const correctOption = question.options[question.correct];
+        if (this.isEnglishText(correctOption)) {
+            return correctOption.trim();
+        }
+        
+        // Last fallback: Check all options for English vocabulary
         const englishOptions = question.options.filter(option => 
-            /^[a-zA-Z\s\-']+$/.test(option.trim()) && option.trim().length > 1
+            this.isEnglishText(option) && option.trim().length > 2
         );
         
-        return englishOptions.length > 0 ? englishOptions.join(', ') : null;
+        return englishOptions.length > 0 ? englishOptions[0].trim() : null;
     }
     
     performSpeech(textToSpeak) {
@@ -472,6 +478,43 @@ class VocabularyQuiz {
             word.length > 1 && 
             !/^(what|does|mean|choose|correct|the|is|are|in|on|at|to|for|of|a|an|and|or)$/i.test(word.trim())
         );
+    }
+    
+    extractEnglishVocabulary(text) {
+        // Extract meaningful English vocabulary words only
+        const englishPattern = /\b[a-zA-Z]{3,}(?:\s+[a-zA-Z]{3,})*\b/g;
+        const matches = text.match(englishPattern) || [];
+        
+        // Filter out common question words and focus on vocabulary
+        const commonWords = new Set([
+            'what', 'does', 'mean', 'choose', 'correct', 'answer', 'option', 'question',
+            'the', 'are', 'was', 'were', 'have', 'has', 'had', 'will', 'would',
+            'can', 'could', 'should', 'may', 'might', 'must', 'shall', 'this', 'that',
+            'these', 'those', 'here', 'there', 'when', 'where', 'why', 'how', 'who',
+            'which', 'and', 'but', 'because', 'for', 'with', 'without', 'from',
+            'into', 'onto', 'upon', 'about', 'above', 'below', 'under', 'over'
+        ]);
+        
+        return matches.filter(word => {
+            const cleanWord = word.trim().toLowerCase();
+            return cleanWord.length >= 3 && 
+                   !commonWords.has(cleanWord) &&
+                   /^[a-zA-Z\s-']+$/.test(word) &&
+                   !/^\d/.test(word); // Not starting with number
+        });
+    }
+    
+    isEnglishText(text) {
+        if (!text || text.trim().length < 2) return false;
+        
+        // Check if text contains only English characters (letters, spaces, hyphens, apostrophes)
+        const englishOnly = /^[a-zA-Z\s\-']+$/.test(text.trim());
+        
+        // Must be at least 2 characters and not a common question word
+        const commonWords = ['a', 'an', 'the', 'is', 'are', 'was', 'were', 'to', 'of', 'in', 'on', 'at'];
+        const isNotCommon = !commonWords.includes(text.trim().toLowerCase());
+        
+        return englishOnly && isNotCommon && text.trim().length >= 2;
     }
     
     
