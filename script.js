@@ -135,10 +135,23 @@ class VocabularyQuiz {
         this.startTime = null;
         this.endTime = null;
         
+        // Speech synthesis optimization
+        this.speechSynthesis = window.speechSynthesis;
+        this.currentVoice = null;
+        this.voicesLoaded = false;
+        this.speechQueue = [];
+        this.isSpeaking = false;
+        
+        // Device detection
+        this.isMobile = this.detectMobile();
+        this.isIOS = this.detectIOS();
+        this.isAndroid = this.detectAndroid();
+        
         // Shuffle questions randomly
         this.shuffledQuizData = this.shuffleArray([...quizData]);
         this.totalQuestions = this.shuffledQuizData.length;
         
+        this.initializeSpeech();
         this.initializeElements();
         this.bindEvents();
         this.loadQuestion();
@@ -148,58 +161,223 @@ class VocabularyQuiz {
     
     
     speakText() {
-        if ('speechSynthesis' in window) {
-            // Cancel any ongoing speech
-            speechSynthesis.cancel();
-            
-            let textToSpeak = '';
-            let question;
-            
-            if (this.isRetryMode) {
-                question = this.retryQuestions[this.currentRetryIndex];
-            } else {
-                question = this.shuffledQuizData[this.currentQuestion];
-            }
-            
-            // Extract English words from question
-            const englishWords = this.extractEnglishWords(question.question);
-            if (englishWords.length > 0) {
-                textToSpeak = englishWords.join(', ');
-            } else {
-                // If no English words found, try to speak options
-                textToSpeak = question.options.filter(option => 
-                    /^[a-zA-Z\s]+$/.test(option)
-                ).join(', ');
-            }
-            
-            if (textToSpeak) {
-                const utterance = new SpeechSynthesisUtterance(textToSpeak);
-                utterance.lang = 'en-US';
-                utterance.rate = 0.8;
-                utterance.pitch = 1;
-                
-                // Change button appearance during speech
-                this.speakBtn.textContent = '🔄 Speaking...';
-                this.speakBtn.disabled = true;
-                
-                utterance.onend = () => {
-                    this.speakBtn.textContent = '🔊 Listen';
-                    this.speakBtn.disabled = false;
-                };
-                
-                utterance.onerror = () => {
-                    this.speakBtn.textContent = '🔊 Listen';
-                    this.speakBtn.disabled = false;
-                    console.error('Speech synthesis error');
-                };
-                
-                speechSynthesis.speak(utterance);
-            } else {
-                alert('No English text found to pronounce in this question.');
-            }
-        } else {
-            alert('Text-to-speech is not supported in your browser.');
+        if (!this.speechSynthesis) {
+            this.showSpeechError('Text-to-speech is not supported in your browser.');
+            return;
         }
+        
+        // Prevent multiple speech instances
+        if (this.isSpeaking) {
+            this.stopSpeech();
+            return;
+        }
+        
+        // Wait for voices to load
+        if (!this.voicesLoaded) {
+            setTimeout(() => this.speakText(), 100);
+            return;
+        }
+        
+        let textToSpeak = this.getTextToSpeak();
+        
+        if (!textToSpeak) {
+            this.showSpeechError('No English text found to pronounce in this question.');
+            return;
+        }
+        
+        this.performSpeech(textToSpeak);
+    }
+    
+    getTextToSpeak() {
+        let question;
+        if (this.isRetryMode) {
+            question = this.retryQuestions[this.currentRetryIndex];
+        } else {
+            question = this.shuffledQuizData[this.currentQuestion];
+        }
+        
+        // Extract English words from question
+        const englishWords = this.extractEnglishWords(question.question);
+        if (englishWords.length > 0) {
+            return englishWords.join(', ');
+        }
+        
+        // Fallback to English options
+        const englishOptions = question.options.filter(option => 
+            /^[a-zA-Z\s\-']+$/.test(option.trim()) && option.trim().length > 1
+        );
+        
+        return englishOptions.length > 0 ? englishOptions.join(', ') : null;
+    }
+    
+    performSpeech(textToSpeak) {
+        // Cancel any ongoing speech
+        this.speechSynthesis.cancel();
+        
+        const utterance = new SpeechSynthesisUtterance(textToSpeak);
+        
+        // Configure utterance for optimal experience
+        this.configureUtterance(utterance);
+        
+        // Set up event handlers
+        this.setupSpeechHandlers(utterance);
+        
+        // Update UI
+        this.updateSpeechUI(true);
+        
+        // Speak with retry mechanism
+        this.speakWithRetry(utterance);
+    }
+    
+    configureUtterance(utterance) {
+        // Set voice
+        if (this.currentVoice) {
+            utterance.voice = this.currentVoice;
+        }
+        
+        // Optimize settings for different devices
+        if (this.isMobile) {
+            utterance.rate = this.isIOS ? 0.7 : 0.8;  // Slower on iOS
+            utterance.pitch = 1.0;
+            utterance.volume = 0.9;
+        } else {
+            utterance.rate = 0.8;
+            utterance.pitch = 1.0;
+            utterance.volume = 1.0;
+        }
+        
+        // Set language
+        utterance.lang = this.currentVoice?.lang || 'en-US';
+    }
+    
+    setupSpeechHandlers(utterance) {
+        utterance.onstart = () => {
+            this.isSpeaking = true;
+            console.log('Speech started');
+        };
+        
+        utterance.onend = () => {
+            this.isSpeaking = false;
+            this.updateSpeechUI(false);
+            console.log('Speech ended');
+        };
+        
+        utterance.onerror = (event) => {
+            this.isSpeaking = false;
+            this.updateSpeechUI(false);
+            console.error('Speech error:', event.error);
+            this.handleSpeechError(event.error);
+        };
+        
+        utterance.onpause = () => {
+            console.log('Speech paused');
+        };
+        
+        utterance.onresume = () => {
+            console.log('Speech resumed');
+        };
+    }
+    
+    speakWithRetry(utterance, retryCount = 0) {
+        const maxRetries = 3;
+        
+        try {
+            this.speechSynthesis.speak(utterance);
+            
+            // Timeout mechanism for mobile devices
+            if (this.isMobile) {
+                setTimeout(() => {
+                    if (this.isSpeaking && this.speechSynthesis.speaking) {
+                        // Speech is working correctly
+                        return;
+                    } else if (retryCount < maxRetries) {
+                        console.log(`Speech retry ${retryCount + 1}`);
+                        this.speechSynthesis.cancel();
+                        setTimeout(() => {
+                            this.speakWithRetry(utterance, retryCount + 1);
+                        }, 100);
+                    } else {
+                        this.handleSpeechError('timeout');
+                    }
+                }, 500);
+            }
+        } catch (error) {
+            console.error('Speech error:', error);
+            this.handleSpeechError(error.message);
+        }
+    }
+    
+    stopSpeech() {
+        if (this.speechSynthesis) {
+            this.speechSynthesis.cancel();
+        }
+        this.isSpeaking = false;
+        this.updateSpeechUI(false);
+    }
+    
+    updateSpeechUI(speaking) {
+        if (speaking) {
+            this.speakBtn.innerHTML = '⏹️ Stop';
+            this.speakBtn.classList.add('speaking');
+            this.speakBtn.disabled = false;
+        } else {
+            this.speakBtn.innerHTML = '🔊 Listen';
+            this.speakBtn.classList.remove('speaking');
+            this.speakBtn.disabled = false;
+        }
+    }
+    
+    handleSpeechError(error) {
+        let message;
+        
+        switch (error) {
+            case 'network':
+                message = 'Network error. Please check your connection.';
+                break;
+            case 'synthesis-unavailable':
+                message = 'Speech synthesis is not available.';
+                break;
+            case 'timeout':
+                message = 'Speech timeout. Please try again.';
+                break;
+            case 'interrupted':
+                message = 'Speech was interrupted.';
+                break;
+            default:
+                message = `Speech error: ${error}`;
+        }
+        
+        this.showSpeechError(message);
+    }
+    
+    showSpeechError(message) {
+        // Show error in a non-intrusive way
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'speech-error';
+        errorDiv.textContent = message;
+        errorDiv.style.cssText = `
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #fef2f2;
+            color: #dc2626;
+            padding: 10px 20px;
+            border-radius: 8px;
+            border: 1px solid #fecaca;
+            z-index: 1000;
+            font-size: 0.9rem;
+            max-width: 300px;
+            text-align: center;
+        `;
+        
+        document.body.appendChild(errorDiv);
+        
+        setTimeout(() => {
+            if (errorDiv.parentNode) {
+                errorDiv.parentNode.removeChild(errorDiv);
+            }
+        }, 3000);
     }
     
     extractEnglishWords(text) {
@@ -210,6 +388,114 @@ class VocabularyQuiz {
             word.length > 1 && 
             !/^(what|does|mean|choose|correct|the|is|are|in|on|at|to|for|of|a|an|and|or)$/i.test(word.trim())
         );
+    }
+    
+    
+    // Device detection methods
+    detectMobile() {
+        return /Android|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    }
+    
+    detectIOS() {
+        return /iPad|iPhone|iPod/.test(navigator.userAgent);
+    }
+    
+    detectAndroid() {
+        return /Android/i.test(navigator.userAgent);
+    }
+    
+    // Initialize speech synthesis with optimization
+    initializeSpeech() {
+        if (!this.speechSynthesis) {
+            console.warn('Speech synthesis not supported');
+            return;
+        }
+        
+        // Load voices asynchronously
+        this.loadVoices();
+        
+        // Handle voices changed event (important for Chrome/mobile)
+        if (this.speechSynthesis.onvoiceschanged !== undefined) {
+            this.speechSynthesis.onvoiceschanged = () => {
+                this.loadVoices();
+            };
+        }
+        
+        // Mobile-specific optimizations
+        if (this.isMobile) {
+            this.optimizeForMobile();
+        }
+    }
+    
+    loadVoices() {
+        const voices = this.speechSynthesis.getVoices();
+        if (voices.length === 0) return;
+        
+        // Prioritize English voices with quality order
+        const preferredVoices = [
+            // iOS voices (highest quality)
+            'Samantha', 'Alex', 'Victoria', 'Karen',
+            // Google voices
+            'Google US English', 'Google UK English Female', 'Google UK English Male',
+            // Windows voices
+            'Microsoft Zira Desktop', 'Microsoft David Desktop',
+            // Android voices
+            'en-US-language', 'en-GB-language',
+            // Fallback to any English voice
+            'English'
+        ];
+        
+        // Find best available voice
+        for (const preferredName of preferredVoices) {
+            const voice = voices.find(v => 
+                v.name.includes(preferredName) && 
+                (v.lang.startsWith('en-') || v.lang === 'en')
+            );
+            if (voice) {
+                this.currentVoice = voice;
+                break;
+            }
+        }
+        
+        // Fallback to first English voice
+        if (!this.currentVoice) {
+            this.currentVoice = voices.find(v => v.lang.startsWith('en-')) || voices[0];
+        }
+        
+        this.voicesLoaded = true;
+        console.log('Selected voice:', this.currentVoice?.name || 'Default');
+    }
+    
+    optimizeForMobile() {
+        // iOS specific optimizations
+        if (this.isIOS) {
+            // iOS requires user interaction before speech
+            document.addEventListener('touchstart', this.enableSpeechForIOS.bind(this), { once: true });
+        }
+        
+        // Android specific optimizations
+        if (this.isAndroid) {
+            // Android sometimes needs speech to be triggered differently
+            this.androidSpeechOptimization();
+        }
+    }
+    
+    enableSpeechForIOS() {
+        // Initialize speech synthesis on iOS with user interaction
+        if (this.speechSynthesis) {
+            const utterance = new SpeechSynthesisUtterance('');
+            utterance.volume = 0;
+            this.speechSynthesis.speak(utterance);
+        }
+    }
+    
+    androidSpeechOptimization() {
+        // Ensure speech synthesis is ready on Android
+        setTimeout(() => {
+            if (this.speechSynthesis.getVoices().length === 0) {
+                this.loadVoices();
+            }
+        }, 100);
     }
     
     shuffleArray(array) {
@@ -261,6 +547,9 @@ class VocabularyQuiz {
     loadQuestion() {
         // Clear any running countdown when loading a new question
         this.clearCountdown();
+        
+        // Stop any ongoing speech
+        this.stopSpeech();
         
         let question;
         let questionIndex;
@@ -743,26 +1032,37 @@ class VocabularyQuiz {
     }
     
     speakQuestionText(questionText, options) {
-        if ('speechSynthesis' in window) {
-            speechSynthesis.cancel();
+        if (!this.speechSynthesis) {
+            this.showSpeechError('Text-to-speech is not supported in your browser.');
+            return;
+        }
+        
+        // Stop any current speech
+        this.speechSynthesis.cancel();
+        
+        const englishWords = this.extractEnglishWords(questionText);
+        let textToSpeak = '';
+        
+        if (englishWords.length > 0) {
+            textToSpeak = englishWords.join(', ');
+        } else {
+            const englishOptions = options.filter(option => 
+                /^[a-zA-Z\s\-']+$/.test(option.trim()) && option.trim().length > 1
+            );
+            textToSpeak = englishOptions.join(', ');
+        }
+        
+        if (textToSpeak) {
+            const utterance = new SpeechSynthesisUtterance(textToSpeak);
+            this.configureUtterance(utterance);
             
-            const englishWords = this.extractEnglishWords(questionText);
-            let textToSpeak = '';
+            utterance.onend = () => {
+                // Reset any UI if needed
+            };
             
-            if (englishWords.length > 0) {
-                textToSpeak = englishWords.join(', ');
-            } else {
-                textToSpeak = options.filter(option => 
-                    /^[a-zA-Z\s]+$/.test(option)
-                ).join(', ');
-            }
-            
-            if (textToSpeak) {
-                const utterance = new SpeechSynthesisUtterance(textToSpeak);
-                utterance.lang = 'en-US';
-                utterance.rate = 0.8;
-                speechSynthesis.speak(utterance);
-            }
+            this.speechSynthesis.speak(utterance);
+        } else {
+            this.showSpeechError('No English text found to pronounce.');
         }
     }
     
@@ -805,4 +1105,25 @@ document.addEventListener('DOMContentLoaded', () => {
     const quiz = new VocabularyQuiz();
     // Store quiz instance globally if needed
     window.vocabularyQuiz = quiz;
+    
+    // Cleanup speech synthesis when page unloads
+    window.addEventListener('beforeunload', () => {
+        if (quiz.speechSynthesis) {
+            quiz.speechSynthesis.cancel();
+        }
+    });
+    
+    // Handle visibility change (mobile optimization)
+    document.addEventListener('visibilitychange', () => {
+        if (document.hidden && quiz.isSpeaking) {
+            quiz.stopSpeech();
+        }
+    });
+    
+    // Handle page focus/blur (mobile optimization)
+    window.addEventListener('blur', () => {
+        if (quiz.isSpeaking) {
+            quiz.stopSpeech();
+        }
+    });
 });
