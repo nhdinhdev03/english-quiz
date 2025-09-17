@@ -188,6 +188,35 @@ class VocabularyQuiz {
         this.performSpeech(textToSpeak);
     }
     
+    speakTextWithCallback(callback) {
+        if (!this.speechSynthesis) {
+            this.showSpeechError('Text-to-speech is not supported in your browser.');
+            if (callback) callback();
+            return;
+        }
+        
+        // Prevent multiple speech instances
+        if (this.isSpeaking) {
+            this.stopSpeech();
+        }
+        
+        // Wait for voices to load
+        if (!this.voicesLoaded) {
+            setTimeout(() => this.speakTextWithCallback(callback), 100);
+            return;
+        }
+        
+        let textToSpeak = this.getTextToSpeak();
+        
+        if (!textToSpeak) {
+            this.showSpeechError('No English text found to pronounce in this question.');
+            if (callback) callback();
+            return;
+        }
+        
+        this.performSpeechWithCallback(textToSpeak, callback);
+    }
+    
     getTextToSpeak() {
         let question;
         if (this.isRetryMode) {
@@ -221,6 +250,25 @@ class VocabularyQuiz {
         
         // Set up event handlers
         this.setupSpeechHandlers(utterance);
+        
+        // Update UI
+        this.updateSpeechUI(true);
+        
+        // Speak with retry mechanism
+        this.speakWithRetry(utterance);
+    }
+    
+    performSpeechWithCallback(textToSpeak, callback) {
+        // Cancel any ongoing speech
+        this.speechSynthesis.cancel();
+        
+        const utterance = new SpeechSynthesisUtterance(textToSpeak);
+        
+        // Configure utterance for optimal experience
+        this.configureUtterance(utterance);
+        
+        // Set up event handlers with callback
+        this.setupSpeechHandlersWithCallback(utterance, callback);
         
         // Update UI
         this.updateSpeechUI(true);
@@ -267,6 +315,42 @@ class VocabularyQuiz {
             this.updateSpeechUI(false);
             console.error('Speech error:', event.error);
             this.handleSpeechError(event.error);
+        };
+        
+        utterance.onpause = () => {
+            console.log('Speech paused');
+        };
+        
+        utterance.onresume = () => {
+            console.log('Speech resumed');
+        };
+    }
+    
+    setupSpeechHandlersWithCallback(utterance, callback) {
+        utterance.onstart = () => {
+            this.isSpeaking = true;
+            console.log('Speech started');
+        };
+        
+        utterance.onend = () => {
+            this.isSpeaking = false;
+            this.updateSpeechUI(false);
+            console.log('Speech ended');
+            // Execute callback when speech is complete
+            if (callback) {
+                setTimeout(callback, 100); // Small delay to ensure speech is fully finished
+            }
+        };
+        
+        utterance.onerror = (event) => {
+            this.isSpeaking = false;
+            this.updateSpeechUI(false);
+            console.error('Speech error:', event.error);
+            this.handleSpeechError(event.error);
+            // Execute callback even on error to prevent UI freeze
+            if (callback) {
+                setTimeout(callback, 100);
+            }
         };
         
         utterance.onpause = () => {
@@ -703,15 +787,28 @@ class VocabularyQuiz {
             this.feedbackEl.innerHTML = `
                 Correct! Well done!
                 <div class="auto-advance-indicator">
-                    <div class="countdown-circle">1.5</div>
-                    Next question coming up...
+                    <div class="countdown-circle">...</div>
+                    Reading vocabulary...
                 </div>
             `;
             this.optionsEl[selectedIndex].classList.add('correct');
             
-            // Auto-speak the vocabulary when answer is correct
+            // Auto-speak the vocabulary when answer is correct and wait for completion
             setTimeout(() => {
-                this.speakText();
+                this.speakTextWithCallback(() => {
+                    // Update indicator after speech is done
+                    const indicator = this.feedbackEl.querySelector('.auto-advance-indicator');
+                    if (indicator) {
+                        indicator.innerHTML = `
+                            <div class="countdown-circle">1.0</div>
+                            Next question coming up...
+                        `;
+                    }
+                    // Start countdown after speech is complete
+                    this.startCountdown(() => {
+                        this.autoAdvanceToNext();
+                    }, 1.0); // Shorter countdown after speech
+                });
             }, 500); // Small delay to let user see the correct feedback first
             
         } else {
@@ -719,7 +816,7 @@ class VocabularyQuiz {
             this.feedbackEl.innerHTML = `
                 Incorrect. The correct answer is: ${question.options[question.correct]}
                 <div class="auto-advance-indicator">
-                    <div class="countdown-circle">1.5</div>
+                    <div class="countdown-circle">2.0</div>
                     Next question coming up...
                 </div>
             `;
@@ -735,6 +832,11 @@ class VocabularyQuiz {
                     correctAnswer: question.correct
                 });
             }
+            
+            // For wrong answers, just use normal countdown (no speech)
+            this.startCountdown(() => {
+                this.autoAdvanceToNext();
+            }, 2.0); // Longer time for wrong answers to read explanation
         }
         
         // Disable all options after selection
@@ -758,13 +860,11 @@ class VocabularyQuiz {
             }
         }
         
-        // Auto advance to next question after 1.5 seconds with countdown
-        this.startCountdown(() => {
-            this.autoAdvanceToNext();
-        });
+        // Auto advance to next question after speech completion (for correct) or timeout (for wrong)
+        // Note: The countdown and auto-advance is now handled within the if/else blocks above
     }
     
-    startCountdown(callback) {
+    startCountdown(callback, duration = 1.5) {
         // Clear any existing countdown
         if (this.countdownTimer) {
             clearInterval(this.countdownTimer);
@@ -773,7 +873,7 @@ class VocabularyQuiz {
         const countdownEl = this.feedbackEl.querySelector('.countdown-circle');
         if (!countdownEl) return;
         
-        let timeLeft = 1.5;
+        let timeLeft = duration;
         this.countdownTimer = setInterval(() => {
             timeLeft -= 0.1;
             countdownEl.textContent = Math.max(0, timeLeft).toFixed(1);
