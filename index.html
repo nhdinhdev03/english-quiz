@@ -11,6 +11,38 @@
     <meta name="format-detection" content="telephone=no">
     <title>English Vocabulary Quiz</title>
     <link rel="stylesheet" href="styles.css">
+    <style>
+        /* Final mobile hover state fix */
+        @media (max-width: 768px) and (pointer: coarse) {
+            .option:hover {
+                background-color: #f8f9fa !important;
+                transform: none !important;
+                box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1) !important;
+            }
+            
+            .option.selected:hover,
+            .option.correct:hover,
+            .option.incorrect:hover {
+                transform: none !important;
+            }
+            
+            .btn:hover {
+                transform: none !important;
+            }
+        }
+        
+        /* Prevent text selection and callouts on mobile */
+        @media (pointer: coarse) {
+            .option {
+                -webkit-user-select: none !important;
+                -moz-user-select: none !important;
+                -ms-user-select: none !important;
+                user-select: none !important;
+                -webkit-touch-callout: none !important;
+                touch-action: manipulation !important;
+            }
+        }
+    </style>
 </head>
 <body>
     <div class="container">

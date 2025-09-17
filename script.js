@@ -708,6 +708,12 @@ class VocabularyQuiz {
                 </div>
             `;
             this.optionsEl[selectedIndex].classList.add('correct');
+            
+            // Auto-speak the vocabulary when answer is correct
+            setTimeout(() => {
+                this.speakText();
+            }, 500); // Small delay to let user see the correct feedback first
+            
         } else {
             this.feedbackEl.classList.add('wrong');
             this.feedbackEl.innerHTML = `
